@@ -1,14 +1,11 @@
 from pandas import read_csv, Series, DataFrame
 from re import findall, search
 
-vesvoy_name = 'OC VesVoy' #'TO_VOYAGE'
-ship_name = 'Name' #'VSL NAME'
-cargo_name = 'Container' #['CONTAINER_ID']
-
 cargos = {} #此处是cargo类与箱号的查询字典，直接用箱号查。包含一个数组，[0]为cargo类，[1]为毛重。
 containers = [] #csv的每一行。
 identities = {} #所有的id对应的container
 myfilter = ['Name', 'OC VesVoy', 'Blno', 'Container', 'ML Seal', 'Size', 'Type', 'Gross weight', 'Net weight', 'Next Discharge', 'Operator', 'Temp_C', 'IMO', 'IMOCLS', 'UNNO', 'OOG front', 'OOG left', 'OOG rear', 'OOG right', 'OOG top']
+rename = {'Blno': '提单号', 'Container': '箱号', 'ML Seal': 'SEAL NO.', 'Size': '尺寸', 'Type': '箱型', 'Gross weight': '毛重', 'Net weight': '总重', 'Next Discharge': '转运港', 'Operator': '箱主'}
 
 class container: 
     def __init__(self, data):
@@ -32,6 +29,7 @@ class container:
         self.fromtext = cargo_list[0]
         self.netweight = cargo_list[1]
         self.data = self.process(data)
+        print(self.data)
     
     def process(self, data):
         '''
@@ -96,7 +94,9 @@ for i in range(0, len(csv)):
 '''
 输出txt
 '''
+print("txt start.")
 for key in identities:
+    print("Now: " + key)
     text = head + '\n'
     for i in identities[key]:
         thiscargo = i.fromtext
@@ -105,11 +105,14 @@ for key in identities:
     text = text + '\n' + tail
     with open(key + '.txt', 'w') as f:
         f.write(text)
+print("Finished.")
 
 '''
 输出csv
 '''
+print("excel start.")
 for key in identities:
+    print("Now: " + key)
     newcsv = DataFrame([i.data for i in identities[key]]).ix[:, myfilter]
     judges = ['Temp_C', 'IMOCLS', 'UNNO', 'OOG front', 'OOG left', 'OOG rear', 'OOG right', 'OOG top'] #按有无区分的
     flags = {'Temp_C': True, 'IMO': True, 'IMOCLS': True, 'UNNO': True, 'OOG front': True, 'OOG left': True, 'OOG rear': True, 'OOG right': True, 'OOG top': True}
@@ -121,6 +124,11 @@ for key in identities:
             flags['IMO'] = False
     for i in flags:
         if flags[i]:
+            print(i + ": " + str(not flags[i]))
             newcsv.drop(columns=i, inplace=True)
-    newcsv.rename(columns={'Blno': '提单号', 'Container': '箱号', 'ML Seal': 'SEAL NO.', 'Size': '尺寸', 'Type': '箱型', 'Gross weight': '毛重', 'Net weight': '总重', 'Next Discharge': '转运港', 'Operator': '箱主'}, inplace=True) 
+    newcsv.sort_values("Blno",inplace=True)
+    newcsv.index = range(1, len(newcsv)+1)
+    newcsv.rename(columns=rename, inplace=True)
     newcsv.to_csv(key+'.csv', encoding='ANSI')
+print("Finished.")
+input()

@@ -1,92 +1,16 @@
 # -*- coding: utf-8 -*-
 
 from re import findall, search
-from tkinter import ttk
-from easygui import fileopenbox, msgbox
-import tkinter as tk
-import os
 import csv
-import json
-import sys
 
-#路径
-csvpath = "" 
-txtpath = ""
+from gui import gui
+from container import container
+from config import config
+from cargo import cargo
 
 cargos = {}  # 此处是cargo类与箱号的查询字典，直接用箱号查。包含一个数组，[0]为cargo类，[1]为毛重。
 containers = []  # csv的每一行。
 identities = {}  # 所有的id对应的container
-
-"""
-导入配置文件
-"""
-with open("./config.json", "r", encoding="utf-8") as f:
-    config = json.load(f)
-
-
-class container:
-    def __init__(self, data):
-        """
-            表格拆出来的类。
-            container: 箱号
-            vesvoy: 航次
-            ship: 船名
-            identity: 以船名+航次构成, 来分文本文档和表格。
-            fromtext: 箱号所对应的cargo类，与netweight一起由cargo_list传入
-            netweight: 毛重
-            data: 表格中需要的部分, 传入全表格
-        """
-        self.container = data["Container"]
-        identity = data["Name"] + " " + data["OC VesVoy"]
-        if identity in identities.keys():
-            identities[identity].append(self)
-        else:
-            identities[identity] = [self]
-        cargo_list = cargos[self.container]
-        self.fromtext = cargo_list[0]
-        self.netweight = cargo_list[1]
-        self.data = self.process(data)
-
-    def process(self, data):
-        """
-        把数据修改并按顺序排列。
-        """
-        newdata = {}
-        for i in data.keys():  # 找出不需要改的数据
-            if i in config["myfilter"]:
-                newdata[i] = data[i]
-        if data["ML Seal"] != "nan":  # 处理Seal
-            newdata["ML Seal"] = data["ML Seal"]
-        elif data["Shipper Seal"] != "nan":
-            newdata["ML Seal"] = data["Shipper Seal"]
-        elif data["Customs Seal"] != "nan":
-            newdata["ML Seal"] = data["Customs Seal"]
-        else:
-            newdata["ML Seal"] = ""
-        newdata["Blno"] = self.fromtext.blno
-        newdata["Net weight"] = self.netweight
-        newdata["Next Discharge"] = newdata["Next Discharge"][0:5]
-        return newdata
-
-
-class cargo:
-    def __init__(self, text):
-        """
-            文本文档拆出来的类。
-            text: 12-51全文本
-            blno: 提单号 -> regex: ‘12:(.*?):’
-            isadd: 是否被添加，默认False
-            创建实例时向cargos字典添加自身所有的箱号
-        """
-        self.text = text
-        self.blno = search("12:(.*?):", text).group(1)
-        for i in findall("\n51:.*?'", text):  # 找51行
-            container = search("51:[0-9]{3}:([A-Z]{4}[0-9]{7}[0]{0,1}):", i).group(1)  # 箱号
-            netweight = round(
-                float(search("51:.*?:.*?:.*?:.*?:.*?:.*?:(.*?):", i).group(1))
-            )  # 毛重，删除前导零并四舍五入
-            cargos[container] = [self, netweight]
-        self.isadd = False #判断是否添加过
 
 
 def replace(arr, replaces):
@@ -122,7 +46,17 @@ def txtparser(filename):
     tail = "99" + txt.split("\n12")[-1].split("\n99")[1]  # 文本文档尾
 
     for i in txt.split("\n12")[1:]:
-        cargo(str("12" + i).split("\n99")[0])
+        text = str("12" + i).split("\n99")[0]
+        thiscargo = cargo(text)
+        for i in findall("\n51:.*?'", text):  # 找51行
+            container = search("51:[0-9]{3}:([A-Z]{4}[0-9]{7}[0]{0,1}):", i).group(1)  # 箱号
+            netweight = round(
+                float(search("51:.*?:.*?:.*?:.*?:.*?:.*?:(.*?):", i).group(1))
+            )  # 毛重，删除前导零并四舍五入
+            cargos[container] = [
+                thiscargo,
+                netweight,
+            ]  # 以自身所具有的箱号作为cargos字典的key，其中记录自己的引用和毛重
     return head, tail
 
 
@@ -137,21 +71,30 @@ def csvparser(filename):
             data = todict(csv_header, i)
             if data["Name"] == "":
                 continue
-            containers.append(container(data))
+            thiscontainer = container(data, cargos)
+            containers.append(thiscontainer)
+            thisidentity = thiscontainer.getidentity()
+            if thisidentity in identities.keys():
+                identities[thisidentity].append(thiscontainer)
+            else:
+                identities[thisidentity] = [thiscontainer]
     return
 
 
-def main():
-
+def main(csvpath, txtpath, ui):
+    """
+    主函数
+    """
+    ui.changeinf("读取中")
     head, tail = txtparser(txtpath)
     csvparser(csvpath)
 
     """
     输出txt
     """
-    print("txt start.")
+    ui.changeinf("开始输出txt")
     for key in identities:
-        print("Now: " + key)
+        ui.changeinf("正在输出txt\n" + key)
         text = head + "\n"
         for i in identities[key]:
             thiscargo = i.fromtext
@@ -160,14 +103,14 @@ def main():
         text = text + "\n" + tail
         with open(key + ".txt", "w") as f:
             f.write(text)
-    print("Finished.")
+    ui.changeinf("txt输出完成")
 
     """
     输出csv
     """
-    print("csv start.")
+    ui.changeinf("开始输出csv")
     for key in identities:
-        print("Now: " + key)
+        ui.changeinf("正在输出csv\n" + key)
         newcsv = [i.data for i in identities[key]]
         judges = [
             "Temp_C",
@@ -190,99 +133,29 @@ def main():
             "OOG right": True,
             "OOG top": True,
         }
-        for i in range(0, len(newcsv)): #若有对应项则保留列名
+        for i in range(0, len(newcsv)):  # 若有对应项则保留列名
             for j in judges:
                 if str(newcsv[i][j]) != "nan" and str(newcsv[i][j]) != "0":
                     flags[j] = False
             if str(newcsv[i]["IMO"]) == "Y":
                 flags["IMO"] = False
 
-        for i in flags: #删除未使用的列名
+        for i in flags:  # 删除未使用的列名
             if flags[i]:
                 for j in newcsv:
                     j.pop(i)
 
-        newcsv.sort(key=lambda e: e["Blno"]) #根据Blno排序
+        newcsv.sort(key=lambda e: e["Blno"])  # 根据Blno排序
         for i in range(0, len(newcsv)):  # 添加行号
             newcsv[i][""] = i + 1
         with open(key + ".csv", "w", newline="") as f:  # 写入csv
             writer = csv.DictWriter(f, [""] + config["myfilter"])  # 添加行号
             writer.writeheader()
             writer.writerows(newcsv)
-    msgbox("完成")
-    sys.exit(0)
+        ui.changeinf("完成")
+    return
 
 
-"""
-UI部分
-"""
-window = tk.Tk()
-window.title("打开文件")
-
-
-textframe = ttk.LabelFrame(window, text="打开文件")
-textframe.grid(column=0, row=0, padx=10, pady=10)
-
-"""
-CSV
-"""
-
-
-def opencsv():
-    global csvpath
-    path = fileopenbox()
-    print(path)
-    csvtext.set(path)
-    csvpath = path
-
-
-ttk.Label(textframe, text="CSV: ").grid(column=0, row=0)
-csvtext = tk.StringVar()
-csvlabel = ttk.Entry(textframe, width=50, textvariable=csvtext, state="readonly")
-csvlabel.grid(column=1, row=0, sticky=tk.W)
-ttk.Button(textframe, text="打开", command=opencsv).grid(column=2, row=0)
-
-"""
-TXT
-"""
-
-
-def opentxt():
-    global txtpath
-    path = fileopenbox()
-    print(path)
-    txttext.set(path)
-    txtpath = path
-
-
-ttk.Label(textframe, text="TXT: ").grid(column=0, row=1)
-txttext = tk.StringVar()
-txtlabel = ttk.Entry(textframe, width=50, textvariable=txttext, state="readonly")
-txtlabel.grid(column=1, row=1, sticky=tk.W)
-ttk.Button(textframe, text="打开", command=opentxt).grid(column=2, row=1)
-
-"""
-开始、配置按钮
-"""
-buttons = tk.Frame(window)
-buttons.grid(column=0, row=1, padx=10)
-
-
-def start():
-    main()
-
-
-ttk.Button(buttons, text="开始", command=start).grid(
-    column=0, row=2, sticky=tk.W, padx=5, pady=5
-)
-
-
-def editconfig():
-    os.startfile("config.json")
-
-
-ttk.Button(buttons, text="配置", command=editconfig).grid(
-    column=1, row=2, sticky=tk.W, padx=5, pady=5
-)
-
-window.mainloop()
+if __name__ == "__main__":
+    ui = gui(main)
+    ui.window.mainloop()

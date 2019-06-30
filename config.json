@@ -1,0 +1,35 @@
+{
+    "myfilter": [
+        "Name",
+        "OC VesVoy",
+        "Blno",
+        "Container",
+        "ML Seal",
+        "Size",
+        "Type",
+        "Gross weight",
+        "Net weight",
+        "Next Discharge",
+        "Operator",
+        "Temp_C",
+        "IMO",
+        "IMOCLS",
+        "UNNO",
+        "OOG front",
+        "OOG left",
+        "OOG rear",
+        "OOG right",
+        "OOG top"
+    ],
+    "rename": {
+        "Blno": "提单号",
+        "Container": "箱号",
+        "ML Seal": "SEAL NO.",
+        "Size": "尺寸",
+        "Type": "箱型",
+        "Gross weight": "毛重",
+        "Net weight": "总重",
+        "Next Discharge": "转运港",
+        "Operator": "箱主"
+    }
+}

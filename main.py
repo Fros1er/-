@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from re import findall, search
 import csv
+from re import findall, search
 
-from gui import gui
-from container import container
-from config import config
 from cargo import cargo
+from config import config
+from container import container
+from gui import gui
 
 cargos = {}  # 此处是cargo类与箱号的查询字典，直接用箱号查。包含一个数组，[0]为cargo类，[1]为毛重。
 containers = []  # csv的每一行。
@@ -15,11 +15,13 @@ identities = {}  # 所有的id对应的container
 
 def replace(arr, replaces):
     """
-    替换myfilter中的内容
+    替换dict中的key，arr为含有dict的数组
     """
-    for i in range(0, len(arr)):
-        if arr[i] in replaces.keys():
-            arr[i] = replaces[arr[i]]
+    for i in arr:
+        for j in i:
+            if j in replaces.keys():
+                i[replaces[j]] = i[j]
+                i.pop(j)
     return arr
 
 
@@ -148,7 +150,13 @@ def main(csvpath, txtpath, ui):
         newcsv.sort(key=lambda e: e["Blno"])  # 根据Blno排序
         for i in range(0, len(newcsv)):  # 添加行号
             newcsv[i][""] = i + 1
-        with open(key + ".csv", "w", newline="") as f:  # 写入csv
+        
+        newcsv = replace(newcsv, config["rename"])
+        column = config["myfilter"]
+        for i in range(0, len(column)):
+            if column[i] in config["rename"].keys():
+                column[i] = config["rename"][column[i]]
+        with open(key + ".csv", "w+", newline="") as f:  # 写入csv
             writer = csv.DictWriter(f, [""] + config["myfilter"])  # 添加行号
             writer.writeheader()
             writer.writerows(newcsv)
